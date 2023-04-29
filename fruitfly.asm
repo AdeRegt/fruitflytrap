@@ -46,6 +46,7 @@ mainloop:
     mov cx , word [program_counter]
     cmp cx,0x0FFF
     je warningnoexit
+    add cx,cx
     mov si, memorylane 
     add si, 8
     add si,cx 
@@ -63,50 +64,50 @@ mainloop:
     shr ax,12
     mov word[current_task],ax
 
-    cmp word[current_task],0x0
-    je command_nope
+    ; cmp word[current_task],0x0
+    ; je command_nope
 
-    cmp word[current_task],0x1
-    je command_jne
+    ; cmp word[current_task],0x1
+    ; je command_jne
 
-    cmp word[current_task],0x2
-    je command_jl
+    ; cmp word[current_task],0x2
+    ; je command_jl
 
-    cmp word[current_task],0x3
-    je command_jm
+    ; cmp word[current_task],0x3
+    ; je command_jm
 
-    cmp word[current_task],0x4
-    je command_je
+    ; cmp word[current_task],0x4
+    ; je command_je
 
     cmp word[current_task],0x5
     je command_flags
 
-    cmp word[current_task],0x6
-    je command_jump
+    ; cmp word[current_task],0x6
+    ; je command_jump
 
-    cmp word[current_task],0x7
-    je command_rb2a
+    ; cmp word[current_task],0x7
+    ; je command_rb2a
 
-    cmp word[current_task],0x8
-    je command_ra2a
+    ; cmp word[current_task],0x8
+    ; je command_ra2a
 
-    cmp word[current_task],0x9
-    je command_a2rb
+    ; cmp word[current_task],0x9
+    ; je command_a2rb
 
-    cmp word[current_task],0xA
-    je command_a2ra
+    ; cmp word[current_task],0xA
+    ; je command_a2ra
 
     cmp word[current_task],0xB
     je command_call
 
-    cmp word[current_task],0xC
-    je command_v2ra
+    ; cmp word[current_task],0xC
+    ; je command_v2ra
 
     cmp word[current_task],0xD
     je command_syscall
 
-    cmp word[current_task],0xE
-    je command_v2rb
+    ; cmp word[current_task],0xE
+    ; je command_v2rb
 
     cmp word[current_task],0xF
     je command_exit
@@ -191,8 +192,30 @@ command_je:
 
 command_flags:
     pusha
+    mov ax, word [current_argument]
+    cmp ax, 0x11
+    je command_flags_return
+    jmp invalidflags
+    .finosub:
     call inc_instructionpointer
     popa
+    jmp mainloop
+
+command_flags_return:
+    ; decrease jump stack index
+    mov ax, word [jump_stack_index]
+    dec ax
+    mov word [jump_stack_index], ax
+    ; get the value 
+    mov di,jump_stack 
+    add di,word [jump_stack_index]
+    add di,word [jump_stack_index]
+    mov ax, word[di]
+    ; set the pc to the right value
+    mov word[program_counter],ax
+    ; clear the jump_stack value 
+    mov word[di], 0
+    popa 
     jmp mainloop
 
 command_jump:
@@ -240,8 +263,24 @@ command_a2ra:
 
 command_call:
     pusha
-    call inc_instructionpointer
-    popa
+
+    ; push value to the call stack
+    mov di,jump_stack 
+    add di,word [jump_stack_index]
+    add di,word [jump_stack_index]
+    mov ax, word [program_counter]
+    inc ax 
+    mov word[di],ax
+
+    ; increse callstack
+    mov ax, word [jump_stack_index]
+    inc ax
+    mov word [jump_stack_index], ax
+
+    ; do the actual call
+    mov ax,word [current_argument]
+    mov word [program_counter],ax
+    popa 
     jmp mainloop
 
 command_v2ra:
@@ -252,9 +291,58 @@ command_v2ra:
 
 command_syscall:
     pusha
+    mov ax, word [current_argument]
+    add ax,ax 
+    mov si,memorylane
+    add si,8
+    add si,ax 
+    mov ax,0
+    mov ax,word[si]
+    cmp ax,1
+    je command_syscall_print
+    jmp invalidsyscall
+    .finosub:
     call inc_instructionpointer
     popa
     jmp mainloop
+
+command_syscall_print:
+    mov ax, word [current_argument]
+    add ax,ax 
+    mov si,memorylane
+    add si,8 ; basepath
+    add si,ax ; add currentargument
+    add si,2 ; grab the arguments after this
+    push si 
+    .again: 
+    mov al,byte [si]
+    inc si
+    cmp al,0
+    jne .again 
+    dec si
+    mov byte[si],'$'
+    pop si
+    mov dx,si 
+    call print
+    mov dx,newlinemessage
+    call print
+    jmp command_syscall.finosub
+
+invalidsyscall:
+    mov dx,invalidsyscallstring
+    call print 
+    call printhex
+    mov dx,newlinemessage
+    call print 
+    call exit 
+
+invalidflags:
+    mov dx,invalidflagsstring
+    call print 
+    call printhex
+    mov dx,newlinemessage
+    call print 
+    call exit 
 
 command_v2rb:
     pusha
@@ -411,13 +499,15 @@ unknowninstruction db "FATAL: unknown instruction: ",'$'
 newlinemessage db 0x0a,'$'
 defaultfile db "A:\TEST.SXE",0
 normalprogramexitmessage db "Program exits succesfully",0x0a,'$'
+invalidsyscallstring db "Unknown syscall: $"
+invalidflagsstring db "Unknown flag: $"
 filehandler dd 0
 
 program_counter dd 0
 register_A dd 0
 register_B dd 0
 current_instruction dd 0
-current_task db 0
+current_task dd 0
 current_argument dd 0
 jump_stack:
 times 10 dd 0
