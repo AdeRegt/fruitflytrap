@@ -2,9 +2,14 @@
 ## description
 Fruitfly engine for KiddieOS and MSDOS 
 
-## execution
+## build
 ``` 
 fasm fruitfly.asm
+```
+
+## execution
+```
+fruitfly
 ```
 
 ## sample programs
