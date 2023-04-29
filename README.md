@@ -8,4 +8,4 @@ fasm fruitfly.asm
 ```
 
 ## sample programs
-* helloworld.sxe : displays hello world
+* hello.sxe : displays hello world
