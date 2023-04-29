@@ -18,8 +18,13 @@ main:
     mov dx,askforfilemessage
     call print 
 
+    call readstring
+    call trimstringforfile
+    mov dx,newlinemessage
+    call print
+
     ; open file
-    mov dx,defaultfile
+    mov dx,inputresult;defaultfile
     mov ah,0x3D
     int 0x21
     jc error
@@ -428,6 +433,10 @@ trimstringforfile:
     mov al,byte[si]
     cmp al,0x0a
     je .finish
+    cmp al,0x24
+    je .finish
+    cmp al,0x0d
+    je .finish
     inc si
     jmp .again
     .finish:
@@ -453,8 +462,7 @@ readstring:
     cmp cx,0
     jne .again2
     ; now ask stuff
-    mov ax,text
-    mov ds,ax
+    mov ax,0
     mov dx,inputcommandset
     mov ah,0x0A
     int 0x21
@@ -494,7 +502,7 @@ exit:
 welcome_message db "Fruitfly virtual machine for KiddieOS",0x0a,"Created by Alexandros de Regt, https://fruitfly.sanderslando.nl ",0x0a,'$'
 errormessage db "Program exits with errors",0x0a,'$'
 warningnoexitmessage db "WARNING: exit without EXIT",0x0a,'$'
-askforfilemessage db "Opening default file: A:\TEST.SXE",0x0a,'$'
+askforfilemessage db "Please enter the path of the SXE file: ",'$'
 unknowninstruction db "FATAL: unknown instruction: ",'$'
 newlinemessage db 0x0a,'$'
 defaultfile db "A:\TEST.SXE",0
