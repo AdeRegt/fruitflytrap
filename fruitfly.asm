@@ -33,6 +33,7 @@ main:
 	
 	jmp 	process_file
 	
+; INTERN EMULATOR
 enter_emulator:
     ; greet our nice  users
     mov 	dx, welcome_message
