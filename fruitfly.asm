@@ -18,11 +18,29 @@ main:
     mov 	ds, ax
 	mov 	es, ax
 
+	call 	get_argc
+	mov 	[argc], eax
+	cmp 	eax, 1
+	jz 		enter_emulator
+	
+	mov 	cx, 1				; argv index
+	mov 	dx, inputresult		; buffer to copy string
+	call 	get_argvstr
+	
+	mov 	bx, ax
+	mov 	byte[inputresult + bx], 0
+	mov 	[inputcommandset + 1], bl
+	
+	jmp 	process_file
+	
+; INTERN EMULATOR
+enter_emulator:
     ; greet our nice  users
     mov 	dx, welcome_message
     call 	print
 	mov 	dx, moreinformation
 	call 	print
+	
 
 command_line:
     ; ask for file
@@ -32,29 +50,29 @@ command_line:
     call 	trimstringforfile
     mov 	dx, newlinemessage
     call 	print
-	
+
+process_file:	
 	call 	checkauxiliarcommands
 	
     ; open file
-    mov 	ah, 0x3D
 	mov 	dx, inputresult
-	mov 	al, 0x00
-    int 	0x21
+	call 	open
     jc 		error.open
 	
-    ; read file into buffer
-    mov 	[filehandler], ax
-    mov 	bx, ax 
-    mov 	cx, 8206
-    mov 	ah, 0x3F
-    mov 	dx, memorylane
-    int 	0x21
-    jc 		error 
+	mov 	[filehandler], ax
+  
+	mov 	bx, [filehandler]
+	call 	get_file_size
+	
+	; read file into buffer
+	mov 	cx, ax
+    mov 	bx, [filehandler] 
+    call 	read
+    jc 		error.read
 
     ; close the file
     mov 	bx, [filehandler]
-    mov 	ah, 0x3E
-    int 	0x21
+	call 	close
     jc 		error
 
 
@@ -150,6 +168,9 @@ mainloop:
     call 	print
 	mov 	dx, errormessage
     call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
     jmp 	command_line
 
 ; ***************************************************************
@@ -473,7 +494,10 @@ invalidsyscall:
     mov 	dx, newlinemessage
     call 	print
 	mov 	dx, errormessage
-    call 	print 	
+    call 	print
+
+	cmp 	byte[argc], 1
+	ja 		exit
     jmp 	command_line 
 ; ---------------------------------------------------
 
@@ -487,6 +511,9 @@ invalidflags:
     call 	print
 	mov 	dx, errormessage
     call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
     jmp 	command_line 
 ; ---------------------------------------------------
 
@@ -508,6 +535,13 @@ command_v2rb:
 command_exit:
     mov 	dx, normalprogramexitmessage
     call 	print
+	mov 	ax, [current_argument]
+	call 	printhex
+	mov 	dx, newlinemessage
+    call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
     jmp 	command_line
 ; ---------------------------------------------------
 
@@ -528,7 +562,10 @@ inc_instructionpointer:
 ; ---------------------------------------------------
 warningnoexit:
     mov 	dx, warningnoexitmessage
-    call 	print 
+    call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
     jmp 	command_line 
     ret
 ; ---------------------------------------------------
@@ -554,132 +591,33 @@ error:
 	mov 	dx, [si]
 	call 	print
 	
+	cmp 	byte[argc], 1
+	ja 		exit
+	jmp 	command_line
+	
+.read:
+	cmp 	ax, 01h
+	jz 		.access
+	
+	mov 	dx, ilegalerr
+	call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
+	jmp 	command_line
+.access:
+	mov 	dx, deniederr
+	call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
 	jmp 	command_line
 ; ---------------------------------------------------	
 
 ; **********************************************************
 ; EMULATOR UTIL FUNCTIONS
 
-; ---------------------------------------------------
-; PRINTS HEXSTRING
-; IN: AX
-printhex:
-    pusha
-    
-	push 	ax 
-    and 	ax, 0xF000
-    shr 	ax, 12
-    call 	.checkup
-    pop 	ax
-    
-	push 	ax 
-    and 	ax, 0x0F00
-    shr 	ax, 8
-    call 	.checkup
-    pop 	ax
-	
-    push 	ax 
-    and 	ax, 0x00F0
-    shr 	ax, 4
-    call 	.checkup
-    pop ax
-    
-	push 	ax 
-    and 	ax, 0x000F
-    call 	.checkup
-    pop 	ax
-    
-	popa
-    ret
-	
-.checkup:
-    pusha
-    
-	mov 	si, chck0 
-    add 	si, ax 
-    mov 	cl, [si]
-    mov 	di, mdg0 
-    mov 	[di], cl
-    mov 	dx, mdg0 
-    call 	print
-    
-	popa
-    ret
-; ---------------------------------------------------
-
-; ---------------------------------------------------
-; TRIMS STRING
-; IN:
-;   - nothing
-; OUT:
-;   - nothing
-trimstringforfile:
-    pusha
-    
-	mov 	si, inputresult
-    .again:
-		mov		al, [si]
-		cmp  	al, 0x0a
-		je 		.finish
-		cmp 	al, 0x24
-		je 		.finish
-		cmp 	al, 0x0d
-		je 		.finish
-		inc		 si
-		jmp 	.again
-    
-	.finish:
-		mov byte[si], 0
-    
-	popa
-    ret
-; ---------------------------------------------------
-
-; ---------------------------------------------------
-; GETS STRING
-; IN:
-;   - nothing
-; OUT:
-;   - nothing
-readstring:
-    pusha
-    
-	; clear previously entered text
-    mov 	si, inputresult 
-    mov 	cx, 20
-    .again2:
-		mov 	byte[si], '$'
-		inc 	si 
-		dec 	cx 
-		cmp 	cx, 0
-		jne 	.again2
-    
-	; now ask stuff
-    xor 	ax, ax
-    mov 	dx, inputcommandset
-    mov 	ah, 0x0A
-    int 	0x21
-    
-	popa
-    ret 
-; ---------------------------------------------------
-
-
-; ---------------------------------------------------
-; PRINTS STRING
-; IN:
-;   - dx:STRING
-; OUT:
-;   - nothing
-print:
-    pusha
-    
-	mov 	ah, 0x09
-    int 	0x21
-    
-	popa
-    ret
-; ---------------------------------------------------
+include 	"user16.inc"
 
 ; ---------------------------------------------------
 ; EXITS PROGRAM
@@ -744,18 +682,27 @@ emu:
 	add 	sp, 16 + 2			; pusha + call
 	mov 	dx, terminatedemulator
 	call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
 	jmp 	exit
 	
 .HELP:
 	add 	sp, 16 + 2			; pusha + call
 	mov 	dx, informationshelp
 	call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
 	jmp 	command_line
 	
 .VERSION:
 	add 	sp, 16 + 2			; pusha + call
 	mov 	dx, versionemulator
 	call 	print
+	
+	cmp 	byte[argc], 1
+	ja 		exit
 	jmp 	command_line
 ; ---------------------------------------------------
 	
@@ -782,7 +729,7 @@ segment datas
 	askforfilemessage 		db 0x0a,"FRUITFLY> ",'$'
 	newlinemessage 			db 0x0a,'$'
 	defaultfile 			db "A:\TEST.SXE",0
-	normalprogramexitmessage	db "Program exits succesfully",0x0a,'$'
+	normalprogramexitmessage	db "Program exits succesfully with code 0x",'$'
 	errormessage 				db "Program exits with errors",0x0a,'$'
 	invalidsyscallstring		db "ERROR: Unknown syscall 0x",'$'
 	invalidflagsstring 			db "ERROR: Unknown flag 0x",'$'
@@ -791,9 +738,9 @@ segment datas
 	warningnoexitmessage 		db "WARNING: exit without EXIT",0x0a,'$'
 	terminatedemulator 			db "Fruitfly emulator terminated by user!",0x0a,'$'
 	informationshelp 			db "Below is a list of commands that can be used:",0x0a,0x0a
-								db "HELP: print this information.",0x0A
-								db "EXIT: closes the emulator.",0x0A
-								db "VERSION: show emulator version.",0x0a,0x0a
+								db "version/--version: show emulator version.",0x0a
+								db "help/--help: print this information.",0x0A
+								db "exit: closes the emulator.",0x0a,0x0a
 								db "<file>.sxe: run SXE program.",0x0a,'$'
 	versionemulator				db "FruitFly Virtual Machine ",FFVERSION, 0x0a,'$'
 	; --------------------------------------------------------------------------------------------------
@@ -819,6 +766,9 @@ segment datas
 	fileerrmsg	  db "Error: file not found!",0x0D,0x0A,'$'
 	notablemsg	  db "Error: sharing not enabled",0x0D,0x0A,'$'
 	notallowedmsg db "Error: Access mode not allowed!",0x0D,0x0A,'$'
+	
+	deniederr db "Error: Denied access in read file!",0x0D,0x0A,'$'
+	ilegalerr db "Error: illegal handler or not open!",0x0D,0x0A,'$'
 	; --------------------------------------------------------------------------------------------------
 	
 	; --------------- EMULATOR AUXILIAR COMMANDS -------------------------------------------------------
@@ -826,6 +776,8 @@ segment datas
 				dw emu.exit
 				dw emu.help
 				dw emu.version
+				dw emu.helpcli
+				dw emu.versioncli
 				; ADD MORE COMMANDS STRINGS ADDRESS HERE
 	CMDSCOUNT 	dw ($ - emuvector.strs) / 2
 	
@@ -833,15 +785,22 @@ segment datas
 				dw emu.EXIT
 				dw emu.HELP
 				dw emu.VERSION
+				dw emu.HELP
+				dw emu.VERSION
 				; ADD MORE COMMANDS FUNCTIONS ADDRESS HERE
 				
 	emu.exit	db "exit",0
 	emu.help	db "help",0
 	emu.version db "version",0
+	emu.helpcli 	db "--help",0
+	emu.versioncli 	db "--version",0
+	
 	; ADD MORE COMMANDS STRINGS HERE
 	; --------------------------------------------------------------------------------------------------
 
 	; --------------- FRUITFLY PROGRAM VARIABLES & BUFFERS ---------------------------------------------
+	argc 				dd 0
+	
 	filehandler 		dw 0
 	program_counter 	dw 0
 	

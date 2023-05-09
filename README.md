@@ -29,3 +29,10 @@ fruitfly
 * The program can now display the address of unknown instructions in addition to the instruction itself. However, when enabling all initial "comparisons" of which opcode is being read, no opcode becomes "unknown" as it is isolated by "AND" and goes from 0 to F, which possibly any nibble (4 bits) from the ASCII table will be between this range.
 
 
+## Updates v1.1.0:
+
+- Inclusion of "user16.inc" file with new seek, read, close, get_argc, get_argv, get_argv_str functions.
+- Execution of SXE files directly from the command line (optional).
+- `--help` and `--version` parameters directly on the command line (optional).
+- error handling for file reading function.
+- Functions to get file size, argument count and argument strings.
